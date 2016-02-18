@@ -1,12 +1,18 @@
 #!/c/Users/User/Anaconda2/python
 
 from __future__ import print_function
+
 import httplib2
 import os
 import sys
+import oauth2client
+import datetime
+import time
+import urllib2
+import json
+import warnings
 
 from apiclient import discovery
-import oauth2client
 from oauth2client import client
 from oauth2client import tools
 
@@ -16,7 +22,10 @@ SCOPES = ['https://www.googleapis.com/auth/fitness.body.read',
     'https://www.googleapis.com/auth/fitness.activity.read']
 CLIENT_SECRET_FILE = 'client_secret.json'
 APPLICATION_NAME = 'fit-api-project'
+DATA_SOURCE_ID = 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps'
 
+# Suppress the warning about the locked_file module
+warnings.filterwarnings('ignore', '.*locked_file.*')
 
 def get_credentials():
     """Gets valid user credentials from storage.
@@ -47,30 +56,124 @@ def get_credentials():
         print('Storing credentials to ' + credential_path)
     return credentials
 
-def get_fitness_data():
+
+def get_fitness_data(timestamps):
     """Shows basic usage of the Fitness API.
 
     Creates a Fitness API service object and outputs a list of data points
     """
     credentials = get_credentials()    
     http = credentials.authorize(httplib2.Http())
+     
     service = discovery.build('fitness', 'v1', http=http)
         
     # Data Source ID
-    dataSrcId = 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps'
-    dataSetId = '1455602400000000000-1455688800000000000'
-        
-    results = service.users().dataSources().datasets().get(userId='me', dataSourceId=dataSrcId, datasetId=dataSetId).execute()
+    dataSetId = '{0}-{1}'.format(timestamps[0], timestamps[1])
+    
+    results = service.users().dataSources().datasets().get(userId='me', dataSourceId=DATA_SOURCE_ID, datasetId=dataSetId).execute()
        
     return results
 
-def parse_data(data):
+
+def get_total_steps(data):
+    totalSteps = 0
+
     for entry in data['point']:
-        print(entry['value'][0]['intVal'])
+        for value in entry['value']:
+            totalSteps += value['intVal']
     
-    #print(data['point'][0]['value'][0]['intVal'])
+    return totalSteps
+
+    
+def get_start_and_end_timestamps():
+    today = datetime.date.today()
+    dayBeforeYesterday = today - datetime.timedelta(2)
+    yesterday = today - datetime.timedelta(1)
+    
+    # Get the datetimes representing midnight
+    ystDatetime = datetime.datetime.combine(dayBeforeYesterday, datetime.datetime.min.time())
+    dBYDatetime = datetime.datetime.combine(yesterday, datetime.datetime.min.time())
+    
+    # Convert to nanoseconds since epoch
+    startTime = datetime_to_nanoseconds(ystDatetime)
+    endTime = datetime_to_nanoseconds(dBYDatetime)    
+    
+    print("Getting timestamps for {0} to {1}".format(startTime, endTime))
+    
+    # Remove the digits after the decimal and store as strings
+    startTime = '{0:.0f}'.format(startTime)
+    endTime = '{0:.0f}'.format(endTime)
+    
+    return [startTime, endTime]
+
+   
+def datetime_to_nanoseconds(dt):
+    epoch = datetime.datetime.utcfromtimestamp(0)
+    return (dt - epoch).total_seconds() * 1000 * 1000 * 1000
+
+
+def read_habitica_credentials(fileName):
+    with open(fileName, 'r') as content_file:
+        content = content_file.read()
+    credentials = json.loads(content)
+        
+    return credentials
+
+
+def get_habitica_task(taskName, habiticaCredentials):    
+    h = httplib2.Http()
+    url = 'https://habitica.com/api/v2/user/tasks'
+    headers = {'x-api-key': habiticaCredentials['x-api-key'],
+               'x-api-user': habiticaCredentials['x-api-user']}
+    resp, content = h.request(url, "GET", None, headers=headers)    
+    tasks = json.loads(content)
+    taskId = None
+    
+    if(resp['status'] == '200'):
+        for task in tasks:
+            if(task['text'].lower() == taskName):
+                taskId = task['id']
+                break
+    else:
+        print("Server returned status of '{0}'".format(resp['status']))
+    
+    return taskId
+
+
+def increment_step_task(taskId, incrementValue, habiticaCredentials):
+    h = httplib2.Http()
+    url = 'https://habitica.com/api/v2/user/tasks/{0}/up'.format(taskId)
+    headers = habiticaCredentials
+    
+    for x in range(0, incrementValue):
+        # Create and execute the HTTP POST request
+        resp, content = h.request(url, "POST", None, headers=headers)
+        
+        # Check the response
+        if(resp['status'] == '200'):
+            print('Request {0}/{1}: Success'.format(x + 1, incrementValue))
+        else:
+            print('Request {0}/{1}: Failure'.format(x + 1, incrementValue))
+            print("    Server returned status of '{0}'".format(resp['status']))
+    
     return
 
+
 if __name__ == '__main__':
-    data = get_fitness_data()
-    parse_data(data)
+    taskName = '1000 steps'
+    habiticaCredentials = read_habitica_credentials('habitica_secret.json')
+    timestamps = get_start_and_end_timestamps()
+    data = get_fitness_data(timestamps)
+    totalSteps = get_total_steps(data)
+    incrementValue = totalSteps // 1000    
+    taskId = get_habitica_task(taskName, habiticaCredentials)     
+     
+    print('Total Steps: {0}'.format(totalSteps))
+    print('Task will be incremented {0} times'.format(incrementValue))
+    
+    # If the task exists, increment it
+    if(taskId == None):
+        print("Task '{0}' does not exist.".format(taskName))
+    else:
+        print("Located '{0}' task.".format(taskName))
+        increment_step_task(taskId, incrementValue, habiticaCredentials)
