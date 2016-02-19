@@ -48,6 +48,7 @@ def get_credentials():
     if not credentials or credentials.invalid:
         flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
         flow.user_agent = APPLICATION_NAME
+        credentials = tools.run(flow, store)
         print('Storing credentials to ' + credential_path)
     return credentials
 
@@ -93,7 +94,7 @@ def get_start_and_end_timestamps():
     startTime = datetime_to_nanoseconds(ystDatetime)
     endTime = datetime_to_nanoseconds(dBYDatetime)    
     
-    print("Getting timestamps for {0:.0f} to {1:.0f}".format(startTime, endTime))
+    print("Getting timestamps for {0} to {1}".format(startTime, endTime))
     
     # Remove the digits after the decimal and store as strings
     startTime = '{0:.0f}'.format(startTime)
