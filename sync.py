@@ -1,4 +1,4 @@
-#!/c/Users/User/Anaconda2/python
+#!/usr/bin/python
 
 from __future__ import print_function
 
@@ -15,6 +15,7 @@ import warnings
 from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
+from os.path import join
 
 try:
     import argparse
@@ -27,8 +28,10 @@ except ImportError:
 SCOPES = ['https://www.googleapis.com/auth/fitness.body.read', 
     'https://www.googleapis.com/auth/fitness.activity.read']
 CLIENT_SECRET_FILE = 'client_secret.json'
+HABITICA_SECRET_FILE = 'habitica_secret.json'
 APPLICATION_NAME = 'fit-api-project'
 DATA_SOURCE_ID = 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps'
+CWD = '/home/pi/Git/google-fit-sync'
 
 # Suppress the warning about the locked_file module
 warnings.filterwarnings('ignore', '.*locked_file.*')
@@ -103,7 +106,7 @@ def get_start_and_end_timestamps():
     startTime = datetime_to_nanoseconds(ystDatetime)
     endTime = datetime_to_nanoseconds(dBYDatetime)    
     
-    print("Getting timestamps for {0} to {1}".format(startTime, endTime))
+    print("Getting timestamps for {0:.0f} to {1:.0f}".format(startTime, endTime))
     
     # Remove the digits after the decimal and store as strings
     startTime = '{0:.0f}'.format(startTime)
@@ -117,13 +120,12 @@ def datetime_to_nanoseconds(dt):
     return (dt - epoch).total_seconds() * 1000 * 1000 * 1000
 
 
-def read_habitica_credentials(fileName):
-    with open(fileName, 'r') as content_file:
+def read_habitica_credentials(filePath, fileName):
+    with open(join(filePath, fileName), 'r') as content_file:
         content = content_file.read()
     credentials = json.loads(content)
         
     return credentials
-
 
 def get_habitica_task(taskName, habiticaCredentials):    
     h = httplib2.Http()
@@ -163,10 +165,9 @@ def increment_step_task(taskId, incrementValue, habiticaCredentials):
     
     return
 
-
-if __name__ == '__main__':
+def execute():
     taskName = '1000 steps'
-    habiticaCredentials = read_habitica_credentials('habitica_secret.json')
+    habiticaCredentials = read_habitica_credentials(CWD, HABITICA_SECRET_FILE)
     timestamps = get_start_and_end_timestamps()
     data = get_fitness_data(timestamps)
     totalSteps = get_total_steps(data)
@@ -182,3 +183,9 @@ if __name__ == '__main__':
     else:
         print("Located '{0}' task.".format(taskName))
         increment_step_task(taskId, incrementValue, habiticaCredentials)
+    
+    return
+
+if __name__ == '__main__':
+    execute()
+
