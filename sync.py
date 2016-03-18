@@ -1,24 +1,18 @@
-#!/usr/bin/python
+#!/c/Users/User/Anaconda2/python
 
 """ Retrieve the total number of steps from the Google Fitness API.
 
-Then increment a Hahitica task a number of times based on the step count.
+Then increment a Habitica task a number of times based on the step count.
 """
 
 from __future__ import print_function
 
-import httplib2
 import os
-import oauth2client
 import datetime
 import json
 import warnings
 import logging
-
-from apiclient import discovery
-from oauth2client import client
-from oauth2client import tools
-from os.path import join
+from oauth2client import client, tools
 
 try:
     import argparse
@@ -26,16 +20,23 @@ try:
 except ImportError:
     FLAGS = None
 
+import rollbar
+import httplib2
+import oauth2client
+from apiclient import discovery
+
 # If modifying these scopes, delete your previously saved credentials
 # at ~/.credentials/gmail-python-quickstart.json
 SCOPES = ['https://www.googleapis.com/auth/fitness.body.read', \
     'https://www.googleapis.com/auth/fitness.activity.read']
 CLIENT_SECRET_FILE = 'client_secret.json'
 HABITICA_SECRET_FILE = 'habitica_secret.json'
+ROLLBAR_SECRET_FILE = 'rollbar_secret.json'
 APPLICATION_NAME = 'fit-api-project'
 DATA_SOURCE_ID = 'derived:com.google.step_count.' + \
                  'delta:com.google.android.gms:estimated_steps'
-CWD = '/home/pi/Git/google-fit-sync'
+CWD = 'C:\\Users\\User\\Documents\\Git\\google-fit-sync'
+#CWD = '/home/pi/Git/google-fit-sync'
 LOG_FILENAME = '{0}/{1}'.format(CWD, 'log.log')
 TASK_NAME = '1000 steps'
 STEP_DIVISOR = 1000
@@ -139,10 +140,10 @@ def datetime_to_nanoseconds(date_time):
     return (date_time - epoch).total_seconds() * 1000 * 1000 * 1000
 
 
-def read_habitica_credentials(file_path, file_name):
-    """Read the Habitica credentials from the supplied file.
+def read_credentials_from_file(file_path, file_name):
+    """Read the credentials from the supplied file.
     """
-    with open(join(file_path, file_name), 'r') as content_file:
+    with open(os.path.join(file_path, file_name), 'r') as content_file:
         content = content_file.read()
     credentials = json.loads(content)
 
@@ -179,6 +180,8 @@ def increment_step_task(task_id, increment_value, habitica_credentials):
     http_obj = httplib2.Http()
     url = 'https://habitica.com/api/v2/user/tasks/{0}/up'.format(task_id)
     headers = habitica_credentials
+    success_count = 0
+    failure_count = 0
 
     for index in range(0, increment_value):
         # Create and execute the HTTP POST request
@@ -188,38 +191,63 @@ def increment_step_task(task_id, increment_value, habitica_credentials):
         if resp['status'] == '200':
             log_and_print('Request {0}/{1}: Success'.\
                     format(index + 1, increment_value))
+            success_count += 1
         else:
             log_and_print('Request {0}/{1}: Failure'.\
                     format(index + 1, increment_value))
             log_and_print("    Server returned status of '{0}'".\
                     format(resp['status']))
+            failure_count = 0
+
+    # Log the success and failures to rollbar
+    log_and_print('Received {0} successes and {1} failures'.\
+        format(success_count, failure_count), True)
 
     return
 
-def log_and_print(message):
+def log_and_print(message, rollbar_log=None, rollbar_level=None):
     """Print the message to both the console and the log file.
     """
     print(message)
     logging.info(message)
+    
+    # Check whether or not to log this to rollbar
+    if rollbar_log is None:
+        rollbar_log = False
+
+    # Check if the logging level is set
+    if (rollbar_log == True) and (rollbar_level is None):
+        rollbar_level = 'info'
+    
+    if rollbar_log == True:    
+        rollbar.report_message('Google Fitness Sync: ' + message, rollbar_level)
+
     return
 
 
 def execute():
     """Execute the steps to get the data and increment Hahitica task.
     """
-    habitica_credentials = read_habitica_credentials(CWD, HABITICA_SECRET_FILE)
+
+    # Setup Rollbar for logging and error reporting
+    rollbar_credentials = read_credentials_from_file(CWD, ROLLBAR_SECRET_FILE)
+    rollbar.init(rollbar_credentials['secret'])
+
+    # Setup Habitica credentials
+    habitica_credentials = read_credentials_from_file(CWD, HABITICA_SECRET_FILE)
+
     timestamps = get_start_and_end_timestamps()
     data = get_fitness_data(timestamps)
     total_steps = get_total_steps(data)
     increment_value = total_steps // STEP_DIVISOR
     task_id = get_habitica_task(TASK_NAME, habitica_credentials)
 
-    log_and_print('Total Steps: {0}'.format(total_steps))
+    log_and_print('Total Steps: {0}'.format(total_steps), True)
     log_and_print('Task will be incremented {0} times'.format(increment_value))
 
     # If the task exists, increment it
-    if task_id == None:
-        log_and_print("Task '{0}' does not exist.".format(TASK_NAME))
+    if task_id is None:
+        log_and_print("Task '{0}' does not exist.".format(TASK_NAME), True, 'error')
     else:
         log_and_print("Located '{0}' task.".format(TASK_NAME))
         increment_step_task(task_id, increment_value, habitica_credentials)
