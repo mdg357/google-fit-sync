@@ -1,4 +1,4 @@
-#!/c/Users/User/Anaconda2/python
+#!/usr/bin/python
 
 """ Retrieve the total number of steps from the Google Fitness API.
 
@@ -35,8 +35,7 @@ ROLLBAR_SECRET_FILE = 'rollbar_secret.json'
 APPLICATION_NAME = 'fit-api-project'
 DATA_SOURCE_ID = 'derived:com.google.step_count.' + \
                  'delta:com.google.android.gms:estimated_steps'
-CWD = 'C:\\Users\\User\\Documents\\Git\\google-fit-sync'
-#CWD = '/home/pi/Git/google-fit-sync'
+CWD = '/home/pi/Git/google-fit-sync'
 LOG_FILENAME = '{0}/{1}'.format(CWD, 'log.log')
 TASK_NAME = '1000 steps'
 STEP_DIVISOR = 1000
