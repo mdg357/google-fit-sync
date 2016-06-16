@@ -156,7 +156,7 @@ def get_habitica_task(task_name, habitica_credentials):
     """Make a call to the Habitica API to get the appropriate task ID.
     """
     http_obj = httplib2.Http()
-    url = 'https://habitica.com/api/v2/user/tasks'
+    url = 'https://habitica.com/api/v3/tasks/user'
     headers = {'x-api-key': habitica_credentials['x-api-key'],
                'x-api-user': habitica_credentials['x-api-user']}
     resp, content = http_obj.request(url, "GET", None, headers=headers)
@@ -166,7 +166,7 @@ def get_habitica_task(task_name, habitica_credentials):
         tasks = json.loads(content)
         log_and_print("Server returned status of '200'")
 
-        for task in tasks:
+        for task in tasks['data']:
             if task['text'].lower() == task_name:
                 task_id = task['id']
                 break
@@ -180,7 +180,7 @@ def increment_step_task(task_id, increment_value, habitica_credentials):
     """Increment the value of the supplied task the given number of times.
     """
     http_obj = httplib2.Http()
-    url = 'https://habitica.com/api/v2/user/tasks/{0}/up'.format(task_id)
+    url = 'https://habitica.com/api/v3/tasks/{0}/score/up'.format(task_id)
     headers = habitica_credentials
     success_count = 0
     failure_count = 0
